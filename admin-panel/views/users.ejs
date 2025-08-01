@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPN Admin Panel - Users</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .sidebar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            margin: 2px 0;
+        }
+        .nav-link:hover, .nav-link.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .content-wrapper {
+            margin-left: 250px;
+            padding: 20px;
+        }
+        @media (max-width: 768px) {
+            .content-wrapper {
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <nav class="sidebar position-fixed top-0 start-0" style="width: 250px; z-index: 1000;">
+            <div class="p-3">
+                <h4><i class="fas fa-shield-alt me-2"></i>VPN Admin</h4>
+                <hr class="text-white">
+                
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/users">
+                            <i class="fas fa-users me-2"></i>VPN Users
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/connections">
+                            <i class="fas fa-link me-2"></i>Connections
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/logs">
+                            <i class="fas fa-file-alt me-2"></i>System Logs
+                        </a>
+                    </li>
+                    <% if (user.role === 'admin') { %>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/settings">
+                            <i class="fas fa-cog me-2"></i>Settings
+                        </a>
+                    </li>
+                    <% } %>
+                </ul>
+                
+                <hr class="text-white">
+                
+                <div class="dropdown">
+                    <a href="#" class="nav-link dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="fas fa-user me-2"></i><%= user.username %>
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/logout">
+                            <i class="fas fa-sign-out-alt me-2"></i>Logout
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <div class="content-wrapper">
+            <div class="container-fluid">
+                <!-- Header -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h2>VPN Users</h2>
+                        <p class="text-muted">Manage VPN user accounts</p>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <% if (user.role === 'admin') { %>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                            <i class="fas fa-plus me-2"></i>Add User
+                        </button>
+                        <% } %>
+                    </div>
+                </div>
+                
+                <!-- Users Table -->
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Protocol</th>
+                                        <th>Status</th>
+                                        <th>Last Seen</th>
+                                        <th>Created</th>
+                                        <th>Expires</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <% users.forEach(vpnUser => { %>
+                                    <tr>
+                                        <td><%= vpnUser.username %></td>
+                                        <td>
+                                            <span class="badge bg-info"><%= vpnUser.protocol %></span>
+                                        </td>
+                                        <td>
+                                            <span class="badge <%= vpnUser.is_active ? 'bg-success' : 'bg-danger' %>">
+                                                <%= vpnUser.is_active ? 'Active' : 'Inactive' %>
+                                            </span>
+                                        </td>
+                                        <td><%= vpnUser.last_seen ? new Date(vpnUser.last_seen).toLocaleString() : 'Never' %></td>
+                                        <td><%= new Date(vpnUser.created_at).toLocaleDateString() %></td>
+                                        <td><%= vpnUser.expires_at ? new Date(vpnUser.expires_at).toLocaleDateString() : 'Never' %></td>
+                                        <td>
+                                            <% if (user.role === 'admin') { %>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(<%= vpnUser.id %>)">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                            <% } %>
+                                        </td>
+                                    </tr>
+                                    <% }); %>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add User Modal -->
+    <div class="modal fade" id="addUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add VPN User</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="addUserForm">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="protocol" class="form-label">Protocol</label>
+                            <select class="form-select" id="protocol" name="protocol" required>
+                                <option value="openvpn">OpenVPN</option>
+                                <option value="wireguard">WireGuard</option>
+                                <option value="ipsec">IPsec/IKEv2</option>
+                                <option value="softether">SoftEther</option>
+                                <option value="pptp">PPTP</option>
+                                <option value="l2tp">L2TP</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="expires_at" class="form-label">Expires At (Optional)</label>
+                            <input type="datetime-local" class="form-control" id="expires_at" name="expires_at">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Add User</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('addUserForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const data = {};
+            formData.forEach((value, key) => {
+                data[key] = value;
+            });
+            
+            fetch('/users/add', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    alert('User added successfully');
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            })
+            .catch(error => {
+                alert('Error adding user');
+            });
+        });
+        
+        function deleteUser(userId) {
+            if (confirm('Are you sure you want to delete this user?')) {
+                fetch(`/users/delete/${userId}`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        alert('User deleted successfully');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + result.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Error deleting user');
+                });
+            }
+        }
+    </script>
+</body>
+</html>
