@@ -79,14 +79,22 @@ echo "5) PPTP VPN"
 echo "6) L2TP VPN"
 echo "7) Install All VPNs"
 echo "8) Install Admin Panel Only"
+echo "9) Uninstall VPN Services"
 echo
 
-read -p "Enter your choice [1-8]: " choice
+read -p "Enter your choice [1-9]: " choice
 
 case $choice in
     8)
         print_status "Installing Admin Panel only..."
         ./install-admin-panel.sh
+        ;;
+    9)
+        print_status "Starting uninstallation..."
+        # Download and run uninstaller
+        curl -fsSL "$BASE_URL/uninstall.sh" -o uninstall.sh
+        chmod +x uninstall.sh
+        ./uninstall.sh
         ;;
     *)
         print_status "Installing VPN server..."
@@ -106,17 +114,22 @@ esac
 cd /
 rm -rf "$TEMP_DIR"
 
-print_status "Installation completed!"
-print_status "Check the README.md for usage instructions"
+# Show access information only if not uninstalling
+if [[ $choice -ne 9 ]]; then
+    print_status "Installation completed!"
+    print_status "Check the README.md for usage instructions"
 
-# Show access information
-SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || echo "your-server-ip")
-echo
-echo "Access Information:"
-echo "==================="
-echo "Server IP: $SERVER_IP"
-echo "Admin Panel: http://$SERVER_IP:3000"
-echo "Default Login: admin / admin123"
-echo
-echo "Client configs location: /etc/vpn-config/clients/"
-echo "Installation summary: /etc/vpn-config/install_info.txt"
+    # Show access information
+    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || echo "your-server-ip")
+    echo
+    echo "Access Information:"
+    echo "==================="
+    echo "Server IP: $SERVER_IP"
+    echo "Admin Panel: http://$SERVER_IP:3000"
+    echo "Default Login: admin / admin123"
+    echo
+    echo "Client configs location: /etc/vpn-config/clients/"
+    echo "Installation summary: /etc/vpn-config/install_info.txt"
+else
+    print_status "Uninstallation completed!"
+fi

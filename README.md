@@ -26,12 +26,10 @@ A comprehensive VPN server installer and web-based admin panel that supports mul
 
 ```bash
 # Install VPN server with admin panel
-curl -fsSL https://raw.githubusercontent.com/your-repo/vpn-installer/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/your-repo/vpn-installer/main/quick-install.sh | sudo bash
 
-# Or download and run locally
-wget https://raw.githubusercontent.com/your-repo/vpn-installer/main/install.sh
-chmod +x install.sh
-sudo ./install.sh
+# Or quick uninstall
+curl -fsSL https://raw.githubusercontent.com/your-repo/vpn-installer/main/quick-uninstall.sh | sudo bash
 ```
 
 ### Option 2: Git Clone Method
@@ -44,12 +42,42 @@ cd vpn-installer
 # Make scripts executable
 chmod +x install.sh
 chmod +x install-admin-panel.sh
+chmod +x uninstall.sh
 
 # Install VPN server
 sudo ./install.sh
 
 # Install admin panel
 sudo ./install-admin-panel.sh
+
+# Uninstall (if needed)
+sudo ./uninstall.sh
+```
+
+## Uninstalling
+
+### Quick Uninstall (Recommended)
+```bash
+# One-line complete removal
+curl -fsSL https://raw.githubusercontent.com/your-repo/vpn-installer/main/quick-uninstall.sh | sudo bash
+```
+
+### Manual Uninstall
+```bash
+# Download uninstaller
+wget https://raw.githubusercontent.com/your-repo/vpn-installer/main/uninstall.sh
+chmod +x uninstall.sh
+
+# Run uninstaller (interactive)
+sudo ./uninstall.sh
+```
+
+### Uninstall Options
+- **Individual Services**: Remove specific VPN protocols
+- **Admin Panel Only**: Remove just the web interface
+- **Complete Removal**: Remove everything including configs
+- **Automatic Backup**: Creates backup before removal
+- **Firewall Cleanup**: Removes VPN-related firewall rules
 ```
 
 ## Installation Steps
@@ -125,6 +153,33 @@ systemctl status vpn-admin     # Check status
 journalctl -u vpn-admin -f     # Follow logs
 journalctl -u vpn-admin --since "1 hour ago"  # Recent logs
 ```
+
+## What Gets Removed During Uninstallation
+
+### VPN Services
+- **OpenVPN**: Service, configs, certificates, Easy-RSA
+- **WireGuard**: Service, interface configs, keys
+- **IPsec/IKEv2**: StrongSwan, certificates, secrets
+- **SoftEther**: Server installation, configurations
+- **PPTP**: Service and configuration files
+- **L2TP**: xl2tpd service and configs
+
+### Admin Panel
+- **Web Application**: Node.js app and database
+- **System Service**: systemd service file
+- **User Account**: vpnadmin user (optional)
+- **Node.js**: Can be removed optionally
+
+### System Configuration
+- **Firewall Rules**: VPN-specific iptables rules
+- **IP Forwarding**: Can be disabled optionally
+- **Configuration Dirs**: /etc/vpn-config, /opt/vpn-admin
+- **Log Files**: VPN-related log files
+
+### Backup Creation
+- **Automatic Backup**: All configs saved before removal
+- **Backup Location**: /root/vpn-backup-TIMESTAMP/
+- **Includes**: Certificates, configs, admin panel data
 
 ## Configuration Files
 

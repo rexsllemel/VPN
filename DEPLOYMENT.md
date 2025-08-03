@@ -273,6 +273,52 @@ sudo /root/backup-vpn.sh
 sudo ./install.sh
 ```
 
+For admin panel updates:
+```bash
+cd /opt/vpn-admin
+sudo -u vpnadmin npm update
+systemctl restart vpn-admin
+```
+
+## Uninstalling VPN Services
+
+### Quick Uninstall
+```bash
+# Complete removal (one-line)
+curl -fsSL https://your-domain.com/quick-uninstall.sh | sudo bash
+
+# Interactive removal
+wget https://your-domain.com/uninstall.sh
+chmod +x uninstall.sh
+sudo ./uninstall.sh
+```
+
+### Uninstall Options
+- **Individual Services**: Remove specific VPN protocols
+- **Admin Panel Only**: Remove just the web interface  
+- **Complete Removal**: Remove everything including configs
+- **Automatic Backup**: Creates backup before removal
+- **Firewall Cleanup**: Removes VPN-related rules
+
+### What Gets Removed
+- All VPN services and configurations
+- Admin panel and database
+- Firewall rules and system changes
+- User accounts and certificates
+- Log files and temporary data
+
+### Before Uninstalling
+- **Backup important data** (done automatically)
+- **Note down any custom configurations**
+- **Export user certificates** if needed
+- **Document any firewall customizations**
+
+### After Uninstalling
+- **Reboot the system** to ensure clean state
+- **Check for remaining files** manually
+- **Remove unused packages**: `apt autoremove` (Debian/Ubuntu)
+- **Restore original network configuration** if needed
+
 ## Cost Optimization
 
 ### Cloud Provider Recommendations
