@@ -178,7 +178,19 @@ journalctl -u vpn-admin --since "1 hour ago"  # Recent logs
    journalctl -u service-name -f
    ```
 
-2. **Can't connect to admin panel**
+2. **StrongSwan/IPsec issues (plugin loading errors)**
+   ```bash
+   # Use the dedicated fix script
+   sudo ./fix-strongswan.sh
+   
+   # Or manually fix
+   systemctl stop strongswan
+   mkdir -p /etc/strongswan.d/charon
+   # Edit plugin configuration
+   systemctl start strongswan
+   ```
+
+3. **Can't connect to admin panel**
    ```bash
    # Check if service is running
    systemctl status vpn-admin

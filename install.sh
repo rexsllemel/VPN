@@ -264,7 +264,37 @@ install_ipsec() {
     
     case $OS in
         "debian")
-            apt-get install -y strongswan strongswan-pki libcharon-extra-plugins
+            # Install StrongSwan with minimal plugins to avoid loading issues
+            apt-get install -y strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins
+            # Disable problematic plugins
+            mkdir -p /etc/strongswan.d/charon
+            cat > /etc/strongswan.d/charon/disable-plugins.conf << 'EOF'
+# Disable optional plugins that may cause loading errors
+test-vectors {
+    load = no
+}
+pkcs11 {
+    load = no
+}
+tpm {
+    load = no
+}
+rdrand {
+    load = no
+}
+gcrypt {
+    load = no
+}
+af-alg {
+    load = no
+}
+curve25519 {
+    load = no
+}
+curl {
+    load = no
+}
+EOF
             ;;
         "centos")
             yum install -y strongswan
@@ -276,6 +306,11 @@ install_ipsec() {
     
     # Generate certificates
     mkdir -p /etc/ipsec.d/{cacerts,certs,private}
+    
+    # Set proper permissions
+    chmod 700 /etc/ipsec.d/private
+    chmod 755 /etc/ipsec.d/cacerts
+    chmod 755 /etc/ipsec.d/certs
     
     # CA certificate
     ipsec pki --gen --type rsa --size 4096 --outform pem > /etc/ipsec.d/private/ca-key.pem
@@ -292,11 +327,17 @@ install_ipsec() {
         --flag serverAuth --flag ikeIntermediate --outform pem \
         > /etc/ipsec.d/certs/server-cert.pem
     
+    # Set proper permissions for certificates
+    chmod 600 /etc/ipsec.d/private/*
+    chmod 644 /etc/ipsec.d/cacerts/*
+    chmod 644 /etc/ipsec.d/certs/*
+    
     # Configure IPsec
     cat > /etc/ipsec.conf << 'EOF'
 config setup
     charondebug="ike 1, knl 1, cfg 0"
     uniqueids=no
+    strictcrlpolicy=no
 
 conn ikev2-vpn
     auto=add
@@ -326,20 +367,57 @@ EOF
     cat > /etc/ipsec.secrets << 'EOF'
 : RSA "server-key.pem"
 user1 : EAP "password123"
+user2 : EAP "password456"
 EOF
+    
+    # Set proper permissions for secrets
+    chmod 600 /etc/ipsec.secrets
     
     # Configure iptables for IPsec
     iptables -A INPUT -p udp --dport 500 -j ACCEPT
     iptables -A INPUT -p udp --dport 4500 -j ACCEPT
+    iptables -A INPUT -p esp -j ACCEPT
     iptables -A FORWARD -s 10.10.10.0/24 -j ACCEPT
     iptables -A FORWARD -d 10.10.10.0/24 -j ACCEPT
     iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o eth0 -j MASQUERADE
     
-    # Enable and start IPsec
-    systemctl enable strongswan
-    systemctl start strongswan
+    # Check if strongswan service exists, if not create it
+    if [[ ! -f /lib/systemd/system/strongswan.service ]] && [[ ! -f /etc/systemd/system/strongswan.service ]]; then
+        print_warning "Creating StrongSwan systemd service file..."
+        cat > /etc/systemd/system/strongswan.service << 'EOF'
+[Unit]
+Description=strongSwan IPsec IKEv1/IKEv2 daemon using ipsec.conf
+After=network-online.target
+Wants=network-online.target
+Documentation=man:ipsec(8) man:ipsec.conf(5)
+
+[Service]
+Type=notify
+Restart=on-abnormal
+ExecStart=/usr/sbin/ipsec start --nofork
+ExecReload=/usr/sbin/ipsec reload
+ExecReload=/usr/sbin/ipsec rereadsecrets
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+    fi
     
-    print_status "IPsec/IKEv2 installed and configured"
+    # Enable and start IPsec
+    systemctl enable strongswan 2>/dev/null || systemctl enable strongswan-starter 2>/dev/null || true
+    systemctl start strongswan 2>/dev/null || systemctl start strongswan-starter 2>/dev/null || {
+        print_warning "StrongSwan service failed to start, trying manual start..."
+        ipsec start
+    }
+    
+    # Verify installation
+    sleep 5
+    if ipsec status >/dev/null 2>&1; then
+        print_status "IPsec/IKEv2 installed and configured successfully"
+    else
+        print_warning "IPsec/IKEv2 installed but may need manual configuration"
+    fi
 }
 
 # Install SoftEther VPN
@@ -629,6 +707,94 @@ install_admin_panel() {
     print_status "Admin panel will be available at: http://$(curl -s ifconfig.me):3000"
 }
 
+# Troubleshoot and fix common VPN issues
+troubleshoot_vpn() {
+    print_header "VPN Troubleshooting"
+    
+    print_status "Checking VPN services status..."
+    
+    # Check OpenVPN
+    if systemctl is-active --quiet openvpn@server 2>/dev/null; then
+        print_status "OpenVPN: Running"
+    elif [[ -f /etc/openvpn/server.conf ]]; then
+        print_warning "OpenVPN: Installed but not running"
+        systemctl restart openvpn@server 2>/dev/null || print_error "Failed to start OpenVPN"
+    fi
+    
+    # Check WireGuard
+    if systemctl is-active --quiet wg-quick@wg0 2>/dev/null; then
+        print_status "WireGuard: Running"
+    elif [[ -f /etc/wireguard/wg0.conf ]]; then
+        print_warning "WireGuard: Installed but not running"
+        systemctl restart wg-quick@wg0 2>/dev/null || print_error "Failed to start WireGuard"
+    fi
+    
+    # Check StrongSwan/IPsec
+    if ipsec status >/dev/null 2>&1; then
+        print_status "IPsec/IKEv2: Running"
+    elif [[ -f /etc/ipsec.conf ]]; then
+        print_warning "IPsec/IKEv2: Installed but not running, attempting to fix..."
+        
+        # Try different start methods
+        if systemctl restart strongswan 2>/dev/null; then
+            print_status "StrongSwan started via systemctl"
+        elif systemctl restart strongswan-starter 2>/dev/null; then
+            print_status "StrongSwan started via strongswan-starter"
+        elif ipsec restart 2>/dev/null; then
+            print_status "StrongSwan started via ipsec command"
+        else
+            print_error "Failed to start StrongSwan, trying manual fix..."
+            
+            # Manual configuration fix
+            print_status "Applying StrongSwan fixes..."
+            
+            # Ensure proper permissions
+            chmod 600 /etc/ipsec.secrets
+            chmod 600 /etc/ipsec.d/private/*
+            chown root:root /etc/ipsec.d/private/*
+            
+            # Try starting manually
+            if ipsec start 2>/dev/null; then
+                print_status "StrongSwan started manually"
+            else
+                print_error "Unable to start StrongSwan. Check logs with: journalctl -u strongswan"
+            fi
+        fi
+    fi
+    
+    # Check other services
+    services=("softether-vpnserver" "pptpd" "xl2tpd")
+    for service in "${services[@]}"; do
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
+            print_status "$service: Running"
+        elif systemctl is-enabled --quiet "$service" 2>/dev/null; then
+            print_warning "$service: Installed but not running"
+            systemctl restart "$service" 2>/dev/null || print_error "Failed to start $service"
+        fi
+    done
+    
+    # Check IP forwarding
+    if [[ $(sysctl -n net.ipv4.ip_forward) == "1" ]]; then
+        print_status "IP forwarding: Enabled"
+    else
+        print_warning "IP forwarding: Disabled, enabling..."
+        echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf
+        sysctl -p
+    fi
+    
+    # Check iptables rules
+    if iptables -t nat -L POSTROUTING | grep -q MASQUERADE; then
+        print_status "NAT rules: Configured"
+    else
+        print_warning "NAT rules: Missing, adding basic rules..."
+        iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+        iptables -A FORWARD -i tun+ -j ACCEPT
+        iptables -A FORWARD -i wg+ -j ACCEPT
+    fi
+    
+    print_status "Troubleshooting completed"
+}
+
 # Main menu
 show_menu() {
     clear
@@ -643,6 +809,7 @@ show_menu() {
     echo "7) Install All VPNs"
     echo "8) Install Admin Panel"
     echo "9) Generate Client Configs"
+    echo "10) Troubleshoot VPN Issues"
     echo "0) Exit"
     echo
     read -p "Enter your choice [0-9]: " choice
@@ -728,6 +895,9 @@ main() {
             ;;
         9)
             generate_client_configs
+            ;;
+        10)
+            troubleshoot_vpn
             ;;
         0)
             print_status "Exiting..."

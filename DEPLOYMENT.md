@@ -166,6 +166,19 @@ curl -I google.com
 sudo bash -x ./install.sh
 ```
 
+### StrongSwan/IPsec Issues
+```bash
+# Common StrongSwan plugin loading errors
+sudo ./fix-strongswan.sh
+
+# Check StrongSwan status
+ipsec status
+systemctl status strongswan
+
+# Manual restart
+ipsec restart
+```
+
 ### Services Not Starting
 ```bash
 # Check service status
