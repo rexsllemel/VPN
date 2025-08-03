@@ -619,6 +619,9 @@ EOF
     # Add PSK
     echo "$(curl -s ifconfig.me) %any: PSK \"your_psk_here\"" > /etc/ipsec.secrets
     
+    # Set proper permissions
+    chmod 600 /etc/ipsec.secrets
+    
     # Add L2TP user
     echo "user1 l2tpd password123 *" >> /etc/ppp/chap-secrets
     
@@ -626,17 +629,111 @@ EOF
     iptables -A INPUT -p udp --dport 500 -j ACCEPT
     iptables -A INPUT -p udp --dport 4500 -j ACCEPT
     iptables -A INPUT -p udp --dport 1701 -j ACCEPT
+    iptables -A INPUT -p esp -j ACCEPT
     iptables -A FORWARD -s 192.168.1.0/24 -j ACCEPT
     iptables -A FORWARD -d 192.168.1.0/24 -j ACCEPT
     iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth0 -j MASQUERADE
     
-    # Enable and start services
-    systemctl enable strongswan
+    # Apply StrongSwan fixes for L2TP (same issues as IPsec/IKEv2)
+    print_status "Configuring StrongSwan for L2TP..."
+    
+    # Disable problematic plugins
+    mkdir -p /etc/strongswan.d/charon
+    cat > /etc/strongswan.d/charon/disable-plugins.conf << 'EOF'
+# Disable optional plugins that may cause loading errors
+test-vectors {
+    load = no
+}
+pkcs11 {
+    load = no
+}
+tpm {
+    load = no
+}
+rdrand {
+    load = no
+}
+gcrypt {
+    load = no
+}
+af-alg {
+    load = no
+}
+curve25519 {
+    load = no
+}
+curl {
+    load = no
+}
+EOF
+    
+    # Check if strongswan service exists, if not create it
+    if [[ ! -f /lib/systemd/system/strongswan.service ]] && [[ ! -f /etc/systemd/system/strongswan.service ]]; then
+        print_warning "Creating StrongSwan systemd service file for L2TP..."
+        cat > /etc/systemd/system/strongswan.service << 'EOF'
+[Unit]
+Description=strongSwan IPsec IKEv1/IKEv2 daemon using ipsec.conf
+After=network-online.target
+Wants=network-online.target
+Documentation=man:ipsec(8) man:ipsec.conf(5)
+
+[Service]
+Type=notify
+Restart=on-abnormal
+ExecStart=/usr/sbin/ipsec start --nofork
+ExecReload=/usr/sbin/ipsec reload
+ExecReload=/usr/sbin/ipsec rereadsecrets
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+    fi
+    
+    # Enable and start services with better error handling
     systemctl enable xl2tpd
-    systemctl start strongswan
+    
+    # Try multiple methods to start StrongSwan
+    print_status "Starting StrongSwan for L2TP..."
+    if systemctl enable strongswan 2>/dev/null && systemctl start strongswan 2>/dev/null; then
+        print_status "StrongSwan started successfully via systemctl"
+    elif systemctl enable strongswan-starter 2>/dev/null && systemctl start strongswan-starter 2>/dev/null; then
+        print_status "StrongSwan started successfully via strongswan-starter"
+    elif ipsec start 2>/dev/null; then
+        print_status "StrongSwan started successfully via ipsec command"
+    else
+        print_warning "StrongSwan failed to start normally, trying manual configuration..."
+        # Kill any remaining processes
+        pkill -f charon 2>/dev/null || true
+        pkill -f starter 2>/dev/null || true
+        sleep 2
+        
+        # Try manual start
+        if ipsec start 2>/dev/null; then
+            print_status "StrongSwan started manually"
+        else
+            print_error "StrongSwan failed to start. L2TP may not work properly."
+            print_error "Check logs with: journalctl -u strongswan -f"
+        fi
+    fi
+    
+    # Start xl2tpd
     systemctl start xl2tpd
     
-    print_status "L2TP VPN installed and configured"
+    # Verify L2TP installation
+    sleep 3
+    if systemctl is-active --quiet xl2tpd; then
+        print_status "L2TP service is running"
+    else
+        print_warning "L2TP service may not be running properly"
+    fi
+    
+    if ipsec status >/dev/null 2>&1; then
+        print_status "L2TP VPN installed and configured successfully"
+    else
+        print_warning "L2TP VPN installed but StrongSwan may need manual configuration"
+        print_status "You can try running: sudo ./fix-strongswan.sh"
+    fi
 }
 
 # Generate client configs
